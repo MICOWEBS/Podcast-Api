@@ -1,0 +1,62 @@
+version: '3'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: podcast-api
+    restart: unless-stopped
+    working_dir: /var/www/
+    volumes:
+      - ./:/var/www
+    networks:
+      - podcast-network
+
+  db:
+    image: mysql:8.0
+    container_name: podcast-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+    volumes:
+      - ./docker/mysql:/docker-entrypoint-initdb.d
+    networks:
+      - podcast-network
+
+  mailpit:
+    image: 'axllent/mailpit:latest'
+    container_name: podcast-mailpit
+    ports:
+      - '${MAIL_PORT:-1025}:1025'
+      - '${MAILPIT_WEB_PORT:-8025}:8025'
+    networks:
+      - podcast-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: podcast-api-nginx
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx:/etc/nginx/conf.d/
+    networks:
+      - podcast-network
+
+  redis:
+    image: redis:alpine
+    container_name: podcast-api-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - podcast-network
+
+networks:
+  podcast-network:
+    driver: bridge 
