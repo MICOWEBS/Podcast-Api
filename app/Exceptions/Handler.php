@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -32,6 +33,86 @@ class Handler extends ExceptionHandler
     {
         $this->reportable(function (Throwable $e) {
             //
+        });
+
+        $this->renderable(function (Throwable $e, $request) {
+            if ($request->expectsJson()) {
+                if ($e instanceof ValidationException) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'The given data was invalid.',
+                        'errors' => $e->errors(),
+                        'code' => 422
+                    ], 422);
+                }
+
+                if ($e instanceof AuthenticationException) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Unauthenticated.',
+                        'code' => 401
+                    ], 401);
+                }
+
+                if ($e instanceof ModelNotFoundException) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Resource not found.',
+                        'code' => 404
+                    ], 404);
+                }
+
+                if ($e instanceof NotFoundHttpException) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'The specified URL cannot be found.',
+                        'code' => 404
+                    ], 404);
+                }
+
+                if ($e instanceof MethodNotAllowedHttpException) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Method not allowed.',
+                        'code' => 405
+                    ], 405);
+                }
+
+                if ($e instanceof HttpException) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => $e->getMessage() ?: 'An error occurred.',
+                        'code' => $e->getStatusCode()
+                    ], $e->getStatusCode());
+                }
+
+                if ($e instanceof ApiException) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => $e->getMessage(),
+                        'errors' => $e->getErrors(),
+                        'code' => $e->getCode()
+                    ], $e->getCode());
+                }
+
+                // Handle any other exceptions
+                if (config('app.debug')) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $e->getTrace(),
+                        'code' => 500
+                    ], 500);
+                }
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'An unexpected error occurred.',
+                    'code' => 500
+                ], 500);
+            }
         });
     }
 

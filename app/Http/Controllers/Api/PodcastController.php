@@ -9,8 +9,8 @@ use App\Http\Resources\PodcastResource;
 use App\Models\Category;
 use App\Models\Podcast;
 use App\Exceptions\ApiException;
+use App\Services\CacheService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Support\Facades\Cache;
 use OpenApi\Annotations as OA;
 
 /**
@@ -78,9 +78,10 @@ class PodcastController extends Controller
     public function index(ListPodcastRequest $request): AnonymousResourceCollection
     {
         try {
-            $cacheKey = 'podcasts:' . md5(json_encode($request->all()));
+            $filters = $request->only(['featured', 'category']);
+            $cacheKey = CacheService::getCollectionKey(Podcast::class, $filters);
             
-            return Cache::remember($cacheKey, now()->addMinutes(5), function () use ($request) {
+            return CacheService::remember($cacheKey, function () use ($request) {
                 $query = Podcast::with(['category', 'episodes']);
 
                 if ($request->boolean('featured')) {
@@ -156,7 +157,7 @@ class PodcastController extends Controller
         } catch (\Exception $e) {
             throw new ApiException(
                 'Failed to fetch podcasts',
-                ['error' => [$e->getMessage()]],
+                ['error' => $e->getMessage()],
                 500
             );
         }
@@ -164,12 +165,13 @@ class PodcastController extends Controller
 
     /**
      * @OA\Get(
-     *     path="/api/podcasts/{id}",
+     *     path="/api/podcasts/{podcast}",
      *     summary="Get podcast details",
      *     tags={"Podcasts"},
      *     @OA\Parameter(
-     *         name="id",
+     *         name="podcast",
      *         in="path",
+     *         description="Podcast ID",
      *         required=true,
      *         @OA\Schema(type="integer")
      *     ),
@@ -180,28 +182,24 @@ class PodcastController extends Controller
      *     ),
      *     @OA\Response(
      *         response=404,
-     *         description="Podcast not found",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="status", type="string", example="error"),
-     *             @OA\Property(property="message", type="string", example="Podcast not found"),
-     *             @OA\Property(property="errors", type="array", @OA\Items(type="string")),
-     *             @OA\Property(property="code", type="integer", example=404)
-     *         )
+     *         description="Podcast not found"
      *     )
      * )
      */
     public function show(Podcast $podcast): PodcastResource
     {
         try {
-            $cacheKey = 'podcast:' . $podcast->id;
+            $cacheKey = CacheService::getModelKey($podcast);
             
-            return Cache::remember($cacheKey, now()->addMinutes(5), function () use ($podcast) {
-                return new PodcastResource($podcast->load(['category', 'episodes']));
+            return CacheService::remember($cacheKey, function () use ($podcast) {
+                return new PodcastResource(
+                    $podcast->load(['category', 'episodes'])
+                );
             });
         } catch (\Exception $e) {
             throw new ApiException(
                 'Failed to fetch podcast details',
-                ['error' => [$e->getMessage()]],
+                ['error' => $e->getMessage()],
                 500
             );
         }
@@ -209,13 +207,21 @@ class PodcastController extends Controller
 
     /**
      * @OA\Get(
-     *     path="/api/podcasts/{id}/episodes",
+     *     path="/api/podcasts/{podcast}/episodes",
      *     summary="Get podcast episodes",
      *     tags={"Podcasts"},
      *     @OA\Parameter(
-     *         name="id",
+     *         name="podcast",
      *         in="path",
+     *         description="Podcast ID",
      *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Parameter(
+     *         name="season",
+     *         in="query",
+     *         description="Filter by season number",
+     *         required=false,
      *         @OA\Schema(type="integer")
      *     ),
      *     @OA\Response(
@@ -223,45 +229,42 @@ class PodcastController extends Controller
      *         description="List of episodes",
      *         @OA\JsonContent(
      *             type="array",
-     *             @OA\Items(ref="#/components/schemas/EpisodeResource")
+     *             @OA\Items(ref="#/components/schemas/Episode")
      *         )
      *     ),
      *     @OA\Response(
      *         response=404,
-     *         description="Podcast not found or no episodes found",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="status", type="string", example="error"),
-     *             @OA\Property(property="message", type="string"),
-     *             @OA\Property(property="errors", type="array", @OA\Items(type="string")),
-     *             @OA\Property(property="code", type="integer", example=404)
-     *         )
+     *         description="Podcast not found"
      *     )
      * )
      */
     public function episodes(Podcast $podcast): AnonymousResourceCollection
     {
         try {
-            $cacheKey = 'podcast:episodes:' . $podcast->id;
+            $filters = ['podcast_id' => $podcast->id];
+            if (request()->has('season')) {
+                $filters['season'] = request('season');
+            }
             
-            return Cache::remember($cacheKey, now()->addMinutes(5), function () use ($podcast) {
-                $episodes = $podcast->episodes()->latest()->get();
+            $cacheKey = CacheService::getCollectionKey('Episode', $filters);
+            
+            return CacheService::remember($cacheKey, function () use ($podcast) {
+                $query = $podcast->episodes();
                 
-                if ($episodes->isEmpty()) {
-                    throw new ApiException(
-                        'No episodes found for this podcast',
-                        [],
-                        404
-                    );
+                if (request()->has('season')) {
+                    $query->where('season_number', request('season'));
                 }
                 
-                return EpisodeResource::collection($episodes);
+                return EpisodeResource::collection(
+                    $query->orderBy('season_number', 'desc')
+                          ->orderBy('episode_number', 'desc')
+                          ->paginate(10)
+                );
             });
-        } catch (ApiException $e) {
-            throw $e;
         } catch (\Exception $e) {
             throw new ApiException(
                 'Failed to fetch podcast episodes',
-                ['error' => [$e->getMessage()]],
+                ['error' => $e->getMessage()],
                 500
             );
         }

@@ -7,13 +7,11 @@ use Exception;
 class ApiException extends Exception
 {
     protected $errors;
-    protected $statusCode;
 
-    public function __construct(string $message = '', array $errors = [], int $statusCode = 400)
+    public function __construct(string $message, array $errors = [], int $code = 400)
     {
-        parent::__construct($message);
+        parent::__construct($message, $code);
         $this->errors = $errors;
-        $this->statusCode = $statusCode;
     }
 
     public function getErrors(): array
@@ -21,18 +19,13 @@ class ApiException extends Exception
         return $this->errors;
     }
 
-    public function getStatusCode(): int
-    {
-        return $this->statusCode;
-    }
-
-    public function render()
+    public function render($request)
     {
         return response()->json([
             'status' => 'error',
             'message' => $this->getMessage(),
             'errors' => $this->getErrors(),
-            'code' => $this->getStatusCode()
-        ], $this->getStatusCode());
+            'code' => $this->getCode()
+        ], $this->getCode());
     }
 } 
