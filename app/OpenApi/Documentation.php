@@ -142,6 +142,24 @@ namespace App\OpenApi;
  *         @OA\Property(property="total", type="integer", example=75)
  *     )
  * )
+ * 
+ * @OA\Schema(
+ *     schema="CategoryRequest",
+ *     type="object",
+ *     required={"name"},
+ *     @OA\Property(
+ *         property="name",
+ *         type="string",
+ *         example="Technology",
+ *         description="The name of the category"
+ *     ),
+ *     @OA\Property(
+ *         property="description",
+ *         type="string",
+ *         example="Technology related podcasts",
+ *         description="A description of the category"
+ *     )
+ * )
  */
 class Documentation
 {
@@ -258,13 +276,134 @@ class Documentation
      *         response=200,
      *         description="List of categories",
      *         @OA\JsonContent(
-     *             type="array",
-     *             @OA\Items(ref="#/components/schemas/Category")
+     *             type="object",
+     *             @OA\Property(
+     *                 property="data",
+     *                 type="array",
+     *                 @OA\Items(ref="#/components/schemas/Category")
+     *             )
      *         )
      *     )
      * )
      */
     public function listCategories() {}
+
+    /**
+     * @OA\Get(
+     *     path="/api/categories/{id}",
+     *     summary="Get category details",
+     *     tags={"Categories"},
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Category details",
+     *         @OA\JsonContent(ref="#/components/schemas/Category")
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="Category not found"
+     *     )
+     * )
+     */
+    public function showCategory() {}
+
+    /**
+     * @OA\Post(
+     *     path="/api/categories",
+     *     summary="Create a new category",
+     *     tags={"Categories"},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(ref="#/components/schemas/CategoryRequest")
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="Category created successfully",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             @OA\Property(property="message", type="string", example="Category created successfully"),
+     *             @OA\Property(property="data", ref="#/components/schemas/Category")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="Validation error"
+     *     )
+     * )
+     */
+    public function createCategory() {}
+
+    /**
+     * @OA\Put(
+     *     path="/api/categories/{id}",
+     *     summary="Update a category",
+     *     tags={"Categories"},
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(ref="#/components/schemas/CategoryRequest")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Category updated successfully",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             @OA\Property(property="message", type="string", example="Category updated successfully"),
+     *             @OA\Property(property="data", ref="#/components/schemas/Category")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="Category not found"
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="Validation error"
+     *     )
+     * )
+     */
+    public function updateCategory() {}
+
+    /**
+     * @OA\Delete(
+     *     path="/api/categories/{id}",
+     *     summary="Delete a category",
+     *     tags={"Categories"},
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Category deleted successfully",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             @OA\Property(property="message", type="string", example="Category deleted successfully")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="Category not found"
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="Cannot delete category with associated podcasts"
+     *     )
+     * )
+     */
+    public function deleteCategory() {}
 
     /**
      * @OA\Get(
@@ -338,4 +477,38 @@ class Documentation
      * )
      */
     public function resetPassword() {}
+
+    /**
+     * @OA\Get(
+     *     path="/api/v1/categories/by-slug/{slug}",
+     *     summary="Get category by slug",
+     *     tags={"Categories"},
+     *     @OA\Parameter(
+     *         name="slug",
+     *         in="path",
+     *         required=true,
+     *         description="Category slug",
+     *         @OA\Schema(type="string")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Successful operation",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="data", type="object",
+     *                 @OA\Property(property="id", type="integer", example=1),
+     *                 @OA\Property(property="name", type="string", example="Technology"),
+     *                 @OA\Property(property="slug", type="string", example="technology"),
+     *                 @OA\Property(property="description", type="string", example="Technology related podcasts"),
+     *                 @OA\Property(property="podcasts_count", type="integer", example=5),
+     *                 @OA\Property(property="podcasts", type="array", @OA\Items(ref="#/components/schemas/Podcast"))
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="Category not found"
+     *     )
+     * )
+     */
+    public function getCategoryBySlug() {}
 } 

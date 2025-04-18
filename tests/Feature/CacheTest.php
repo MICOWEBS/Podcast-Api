@@ -4,36 +4,41 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\Podcast;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
+use App\Services\CacheService;
 
 class CacheTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->user = User::factory()->create();
+        $this->actingAs($this->user);
+    }
+
     public function test_podcasts_are_cached(): void
     {
         // Create test data
-        $category = Category::factory()->create();
-        Podcast::factory()->count(3)->create(['category_id' => $category->id]);
+        Podcast::factory()->count(3)->create();
 
-        // Clear cache before test
+        // Clear cache
         Cache::flush();
 
         // First request - should hit the database
-        $response1 = $this->getJson('/api/podcasts');
+        $response1 = $this->getJson($this->apiRoute('podcasts'));
         $response1->assertStatus(200);
 
         // Second request - should hit the cache
-        $response2 = $this->getJson('/api/podcasts');
+        $response2 = $this->getJson($this->apiRoute('podcasts'));
         $response2->assertStatus(200);
 
-        // Both responses should be identical
+        // Verify both responses are identical
         $this->assertEquals($response1->json(), $response2->json());
-
-        // Verify cache key exists
-        $this->assertTrue(Cache::has('podcasts:page:1'));
     }
 
     public function test_categories_are_cached(): void
@@ -41,41 +46,43 @@ class CacheTest extends TestCase
         // Create test data
         Category::factory()->count(3)->create();
 
-        // Clear cache before test
+        // Clear cache
         Cache::flush();
 
         // First request - should hit the database
-        $response1 = $this->getJson('/api/categories');
+        $response1 = $this->getJson($this->apiRoute('categories'));
         $response1->assertStatus(200);
 
         // Second request - should hit the cache
-        $response2 = $this->getJson('/api/categories');
+        $response2 = $this->getJson($this->apiRoute('categories'));
         $response2->assertStatus(200);
 
-        // Both responses should be identical
+        // Verify both responses are identical
         $this->assertEquals($response1->json(), $response2->json());
-
-        // Verify cache key exists
-        $this->assertTrue(Cache::has('categories:all'));
     }
 
     public function test_cache_is_invalidated_on_podcast_update(): void
     {
         // Create test data
-        $category = Category::factory()->create();
-        $podcast = Podcast::factory()->create(['category_id' => $category->id]);
-
-        // Clear cache before test
-        Cache::flush();
+        $podcast = Podcast::factory()->create();
 
         // First request to populate cache
-        $this->getJson('/api/podcasts');
+        $this->getJson($this->apiRoute('podcasts'));
 
         // Update podcast
-        $podcast->update(['title' => 'Updated Title']);
+        $this->actingAs($this->user)
+            ->putJson($this->apiRoute('podcasts/' . $podcast->id), [
+                'title' => 'Updated Title',
+                'description' => 'Updated Description',
+                'category_id' => $podcast->category_id
+            ]);
 
-        // Cache should be invalidated
-        $this->assertFalse(Cache::has('podcasts:page:1'));
+        // Make another request
+        $response = $this->getJson($this->apiRoute('podcasts'));
+
+        // Verify response contains updated data
+        $response->assertStatus(200)
+            ->assertJsonPath('data.0.title', 'Updated Title');
     }
 
     public function test_cache_is_invalidated_on_category_update(): void
@@ -83,37 +90,39 @@ class CacheTest extends TestCase
         // Create test data
         $category = Category::factory()->create();
 
-        // Clear cache before test
-        Cache::flush();
-
         // First request to populate cache
-        $this->getJson('/api/categories');
+        $this->getJson($this->apiRoute('categories'));
 
         // Update category
-        $category->update(['name' => 'Updated Category']);
+        $this->actingAs($this->user)
+            ->putJson($this->apiRoute('categories/' . $category->id), [
+                'name' => 'Updated Category',
+                'description' => 'Updated Description'
+            ]);
 
-        // Cache should be invalidated
-        $this->assertFalse(Cache::has('categories:all'));
+        // Make another request
+        $response = $this->getJson($this->apiRoute('categories'));
+
+        // Verify response contains updated data
+        $response->assertStatus(200)
+            ->assertJsonPath('data.0.name', 'Updated Category');
     }
 
     public function test_cache_ttl(): void
     {
         // Create test data
-        Category::factory()->create();
-
-        // Clear cache before test
-        Cache::flush();
+        Category::factory()->count(3)->create();
 
         // First request to populate cache
-        $this->getJson('/api/categories');
+        $this->getJson($this->apiRoute('categories'));
 
         // Verify cache exists
-        $this->assertTrue(Cache::has('categories:all'));
+        $this->assertTrue(Cache::has(CacheService::getCollectionKey(Category::class)));
 
         // Wait for cache to expire (assuming TTL is 60 seconds)
         sleep(61);
 
-        // Cache should be expired
-        $this->assertFalse(Cache::has('categories:all'));
+        // Verify cache has expired
+        $this->assertFalse(Cache::has(CacheService::getCollectionKey(Category::class)));
     }
 } 

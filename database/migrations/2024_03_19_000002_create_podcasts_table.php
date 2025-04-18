@@ -13,11 +13,20 @@ return new class extends Migration
             $table->string('title');
             $table->text('description');
             $table->string('image')->nullable();
+            $table->string('language', 10)->default('en');
+            $table->json('tags')->nullable();
+            $table->string('author');
+            $table->string('website')->nullable();
+            $table->json('social_links')->nullable();
+            $table->boolean('explicit')->default(false);
             $table->boolean('is_featured')->default(false);
             $table->foreignId('category_id')->constrained()->onDelete('cascade');
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->timestamps();
             
             $table->index('is_featured');
+            $table->index('language');
+            $table->index('author');
         });
     }
 

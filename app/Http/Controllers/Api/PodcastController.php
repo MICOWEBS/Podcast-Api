@@ -12,6 +12,9 @@ use App\Exceptions\ApiException;
 use App\Services\CacheService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use OpenApi\Annotations as OA;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 /**
  * @OA\Tag(
@@ -27,8 +30,11 @@ use OpenApi\Annotations as OA;
  *     @OA\Property(property="id", type="integer"),
  *     @OA\Property(property="title", type="string"),
  *     @OA\Property(property="description", type="string"),
- *     @OA\Property(property="image_url", type="string"),
- *     @OA\Property(property="category_id", type="integer"),
+ *     @OA\Property(property="image", type="string"),
+ *     @OA\Property(property="is_featured", type="boolean"),
+ *     @OA\Property(property="category", ref="#/components/schemas/Category"),
+ *     @OA\Property(property="episodes_count", type="integer"),
+ *     @OA\Property(property="episodes", type="array", @OA\Items(ref="#/components/schemas/Episode")),
  *     @OA\Property(property="created_at", type="string", format="date-time"),
  *     @OA\Property(property="updated_at", type="string", format="date-time")
  * )
@@ -59,108 +65,30 @@ class PodcastController extends Controller
      *         response=200,
      *         description="List of podcasts",
      *         @OA\JsonContent(
-     *             type="array",
-     *             @OA\Items(ref="#/components/schemas/Podcast")
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=400,
-     *         description="Bad request",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="status", type="string", example="error"),
-     *             @OA\Property(property="message", type="string"),
-     *             @OA\Property(property="errors", type="array", @OA\Items(type="string")),
-     *             @OA\Property(property="code", type="integer", example=400)
+     *             type="object",
+     *             @OA\Property(property="data", type="array", @OA\Items(ref="#/components/schemas/Podcast")),
+     *             @OA\Property(property="links", type="object"),
+     *             @OA\Property(property="meta", type="object")
      *         )
      *     )
      * )
      */
-    public function index(ListPodcastRequest $request): AnonymousResourceCollection
+    public function index(Request $request): AnonymousResourceCollection
     {
-        try {
-            $filters = $request->only(['featured', 'category']);
-            $cacheKey = CacheService::getCollectionKey(Podcast::class, $filters);
-            
-            return CacheService::remember($cacheKey, function () use ($request) {
-                $query = Podcast::with(['category', 'episodes']);
-
-                if ($request->boolean('featured')) {
-                    $query->where('is_featured', true);
-                }
-
-                if ($request->has('category')) {
-                    try {
-                        $category = Category::where('slug', $request->category)->firstOrFail();
-                        $query->where('category_id', $category->id);
-                    } catch (\Exception $e) {
-                        throw new ApiException(
-                            'Category not found',
-                            ['category' => ['The specified category does not exist']],
-                            404
-                        );
-                    }
-                }
-
-                if ($request->has('search')) {
-                    $query->where(function($q) use ($request) {
-                        $q->where('title', 'like', '%' . $request->search . '%')
-                          ->orWhere('description', 'like', '%' . $request->search . '%');
-                    });
-                }
-
-                if ($request->has('sort')) {
-                    $allowedSorts = ['latest', 'oldest', 'title'];
-                    if (!in_array($request->sort, $allowedSorts)) {
-                        throw new ApiException(
-                            'Invalid sort parameter',
-                            ['sort' => ['The sort parameter must be one of: ' . implode(', ', $allowedSorts)]],
-                            400
-                        );
-                    }
-
-                    switch ($request->sort) {
-                        case 'latest':
-                            $query->latest();
-                            break;
-                        case 'oldest':
-                            $query->oldest();
-                            break;
-                        case 'title':
-                            $query->orderBy('title');
-                            break;
-                    }
-                }
-
-                $perPage = $request->input('per_page', 12);
-                if ($perPage < 1 || $perPage > 100) {
-                    throw new ApiException(
-                        'Invalid per_page parameter',
-                        ['per_page' => ['The per_page parameter must be between 1 and 100']],
-                        400
-                    );
-                }
-
-                $podcasts = $query->paginate($perPage);
-                
-                if ($podcasts->isEmpty()) {
-                    throw new ApiException(
-                        'No podcasts found',
-                        [],
-                        404
-                    );
-                }
-                
-                return PodcastResource::collection($podcasts);
-            });
-        } catch (ApiException $e) {
-            throw $e;
-        } catch (\Exception $e) {
-            throw new ApiException(
-                'Failed to fetch podcasts',
-                ['error' => $e->getMessage()],
-                500
-            );
+        $query = Podcast::query();
+        
+        if ($request->has('category_id')) {
+            $query->where('category_id', $request->category_id);
         }
+        
+        if ($request->boolean('is_featured')) {
+            $query->where('is_featured', true);
+        }
+        
+        $cacheKey = CacheService::getCollectionKey(Podcast::class, $request->all());
+        $podcasts = CacheService::remember($cacheKey, fn () => $query->paginate());
+        
+        return PodcastResource::collection($podcasts);
     }
 
     /**
@@ -178,7 +106,10 @@ class PodcastController extends Controller
      *     @OA\Response(
      *         response=200,
      *         description="Podcast details",
-     *         @OA\JsonContent(ref="#/components/schemas/Podcast")
+     *         @OA\JsonContent(
+     *             type="object",
+     *             @OA\Property(property="data", ref="#/components/schemas/Podcast")
+     *         )
      *     ),
      *     @OA\Response(
      *         response=404,
@@ -188,21 +119,10 @@ class PodcastController extends Controller
      */
     public function show(Podcast $podcast): PodcastResource
     {
-        try {
-            $cacheKey = CacheService::getModelKey($podcast);
-            
-            return CacheService::remember($cacheKey, function () use ($podcast) {
-                return new PodcastResource(
-                    $podcast->load(['category', 'episodes'])
-                );
-            });
-        } catch (\Exception $e) {
-            throw new ApiException(
-                'Failed to fetch podcast details',
-                ['error' => $e->getMessage()],
-                500
-            );
-        }
+        $cacheKey = CacheService::getModelKey($podcast);
+        return new PodcastResource(
+            CacheService::remember($cacheKey, fn () => $podcast->load('episodes'))
+        );
     }
 
     /**
@@ -268,5 +188,120 @@ class PodcastController extends Controller
                 500
             );
         }
+    }
+
+    /**
+     * @OA\Get(
+     *     path="/api/podcasts/featured",
+     *     summary="Get featured podcasts",
+     *     tags={"Podcasts"},
+     *     @OA\Response(
+     *         response=200,
+     *         description="List of featured podcasts",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             @OA\Property(property="data", type="array", @OA\Items(ref="#/components/schemas/Podcast")),
+     *             @OA\Property(property="links", type="object"),
+     *             @OA\Property(property="meta", type="object")
+     *         )
+     *     )
+     * )
+     */
+    public function featured(): AnonymousResourceCollection
+    {
+        $podcasts = Podcast::with('category')
+            ->where('is_featured', true)
+            ->latest()
+            ->get();
+
+        return PodcastResource::collection($podcasts);
+    }
+
+    /**
+     * @OA\Get(
+     *     path="/api/podcasts/category/{category}",
+     *     summary="Get podcasts by category",
+     *     tags={"Podcasts"},
+     *     @OA\Parameter(
+     *         name="category",
+     *         in="path",
+     *         description="Category slug",
+     *         required=true,
+     *         @OA\Schema(type="string")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="List of podcasts in category",
+     *         @OA\JsonContent(
+     *             type="object",
+     *             @OA\Property(property="data", type="array", @OA\Items(ref="#/components/schemas/Podcast")),
+     *             @OA\Property(property="links", type="object"),
+     *             @OA\Property(property="meta", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="Category not found"
+     *     )
+     * )
+     */
+    public function byCategory(Category $category): AnonymousResourceCollection
+    {
+        $podcasts = $category->podcasts()
+            ->with('category')
+            ->latest()
+            ->paginate(10);
+
+        return PodcastResource::collection($podcasts);
+    }
+
+    public function showBySlug(string $slug): PodcastResource
+    {
+        $cacheKey = CacheService::getCollectionKey(Podcast::class, ['slug' => $slug]);
+        $podcast = CacheService::remember($cacheKey, function () use ($slug) {
+            return Podcast::where('slug', $slug)
+                ->with('episodes')
+                ->firstOrFail();
+        });
+        
+        return new PodcastResource($podcast);
+    }
+
+    public function store(Request $request): PodcastResource
+    {
+        $validated = $request->validate([
+            'title' => 'required|string|max:255|unique:podcasts',
+            'description' => 'required|string',
+            'image' => 'nullable|url',
+            'is_featured' => 'boolean',
+            'category_id' => 'required|exists:categories,id'
+        ]);
+
+        $podcast = Podcast::create($validated);
+        CacheService::clearModelTypeCache(Podcast::class);
+        return new PodcastResource($podcast->load('category'));
+    }
+
+    public function update(Request $request, Podcast $podcast): PodcastResource
+    {
+        $validated = $request->validate([
+            'title' => 'string|max:255|unique:podcasts,title,' . $podcast->id,
+            'description' => 'string',
+            'image' => 'nullable|url',
+            'is_featured' => 'boolean',
+            'category_id' => 'exists:categories,id'
+        ]);
+
+        $podcast->update($validated);
+        CacheService::clearModelCache($podcast);
+        return new PodcastResource($podcast->load('category'));
+    }
+
+    public function destroy(Podcast $podcast): Response
+    {
+        $podcast->delete();
+        CacheService::clearModelCache($podcast);
+
+        return response()->noContent();
     }
 } 

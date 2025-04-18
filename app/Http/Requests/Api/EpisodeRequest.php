@@ -13,93 +13,32 @@ class EpisodeRequest extends ApiRequest
      */
     public function rules(): array
     {
+        $episodeId = $this->route('episode')?->id;
+
         return [
-            'title' => [
-                'required',
-                'string',
-                'min:3',
-                'max:255',
-                Rule::unique('episodes')->where(function ($query) {
-                    return $query->where('podcast_id', $this->podcast_id);
-                })->ignore($this->episode),
-            ],
-            'description' => [
-                'required',
-                'string',
-                'min:10',
-                'max:2000',
-            ],
-            'audio_url' => [
-                'required',
-                'url',
-                'max:2048',
-                'regex:/^https?:\/\/.+\.(mp3|m4a|wav|ogg)$/i',
-            ],
-            'duration' => [
-                'required',
-                'integer',
-                'min:1',
-                'max:86400', // 24 hours in seconds
-            ],
-            'podcast_id' => [
-                'required',
-                'integer',
-                'exists:podcasts,id',
-            ],
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['required', 'string'],
+            'audio_url' => ['required', 'url', 'regex:/\.(mp3|wav|m4a)$/i'],
+            'duration' => ['required', 'integer', 'min:1', 'max:86400'],
             'episode_number' => [
                 'required',
                 'integer',
                 'min:1',
                 Rule::unique('episodes')->where(function ($query) {
-                    return $query->where('podcast_id', $this->podcast_id);
-                })->ignore($this->episode),
+                    return $query->where('podcast_id', $this->input('podcast_id'));
+                })->ignore($episodeId)
             ],
-            'season_number' => [
-                'nullable',
-                'integer',
-                'min:1',
-            ],
-            'publish_date' => [
-                'nullable',
-                'date',
-                'before_or_equal:now',
-            ],
-            'explicit' => [
-                'boolean',
-            ],
-            'keywords' => [
-                'array',
-                'max:20',
-            ],
-            'keywords.*' => [
-                'string',
-                'max:50',
-                'regex:/^[a-zA-Z0-9\s\-_]+$/',
-            ],
-            'guests' => [
-                'array',
-                'max:10',
-            ],
-            'guests.*.name' => [
-                'required_with:guests',
-                'string',
-                'max:255',
-            ],
-            'guests.*.role' => [
-                'required_with:guests',
-                'string',
-                'max:255',
-            ],
-            'show_notes' => [
-                'nullable',
-                'string',
-                'max:5000,
-            ],
-            'transcript' => [
-                'nullable',
-                'string',
-                'max:50000,
-            ],
+            'season_number' => ['required', 'integer', 'min:1'],
+            'publish_date' => ['required', 'date'],
+            'explicit' => ['boolean'],
+            'keywords' => ['array', 'max:10'],
+            'keywords.*' => ['string', 'max:50'],
+            'guests' => ['array', 'max:10'],
+            'guests.*.name' => ['required_with:guests', 'string', 'max:255'],
+            'guests.*.role' => ['required_with:guests', 'string', 'max:255'],
+            'show_notes' => ['string', 'max:10000'],
+            'transcript' => ['string', 'max:50000'],
+            'podcast_id' => ['required', 'exists:podcasts,id'],
         ];
     }
 

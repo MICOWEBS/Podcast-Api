@@ -52,38 +52,12 @@ class EpisodeController extends Controller
      *     path="/api/episodes",
      *     summary="Get all episodes",
      *     tags={"Episodes"},
-     *     @OA\Parameter(
-     *         name="podcast_id",
-     *         in="query",
-     *         description="Filter by podcast ID",
-     *         required=false,
-     *         @OA\Schema(type="integer")
-     *     ),
-     *     @OA\Parameter(
-     *         name="season",
-     *         in="query",
-     *         description="Filter by season number",
-     *         required=false,
-     *         @OA\Schema(type="integer")
-     *     ),
-     *     @OA\Parameter(
-     *         name="search",
-     *         in="query",
-     *         description="Search episodes by title or description",
-     *         required=false,
-     *         @OA\Schema(type="string")
-     *     ),
      *     @OA\Response(
      *         response=200,
      *         description="List of episodes",
      *         @OA\JsonContent(
-     *             type="object",
-     *             @OA\Property(property="data", type="array", @OA\Items(ref="#/components/schemas/Episode")),
-     *             @OA\Property(property="meta", type="object",
-     *                 @OA\Property(property="current_page", type="integer"),
-     *                 @OA\Property(property="total", type="integer"),
-     *                 @OA\Property(property="per_page", type="integer")
-     *             )
+     *             type="array",
+     *             @OA\Items(ref="#/components/schemas/Episode")
      *         )
      *     )
      * )
@@ -91,34 +65,11 @@ class EpisodeController extends Controller
     public function index(): AnonymousResourceCollection
     {
         try {
-            $filters = request()->only(['podcast_id', 'season', 'search']);
-            $cacheKey = CacheService::getCollectionKey(Episode::class, $filters);
-            
-            return CacheService::remember($cacheKey, function () use ($filters) {
-                $query = Episode::with(['podcast']);
-
-                if (isset($filters['podcast_id'])) {
-                    $query->where('podcast_id', $filters['podcast_id']);
-                }
-
-                if (isset($filters['season'])) {
-                    $query->where('season_number', $filters['season']);
-                }
-
-                if (isset($filters['search'])) {
-                    $search = $filters['search'];
-                    $query->where(function ($q) use ($search) {
-                        $q->where('title', 'like', "%{$search}%")
-                          ->orWhere('description', 'like', "%{$search}%");
-                    });
-                }
-
-                return EpisodeResource::collection(
-                    $query->orderBy('season_number', 'desc')
-                          ->orderBy('episode_number', 'desc')
-                          ->paginate(10)
-                );
-            });
+            return EpisodeResource::collection(
+                Episode::with('podcast')
+                    ->orderBy('created_at', 'desc')
+                    ->paginate(10)
+            );
         } catch (\Exception $e) {
             throw new ApiException(
                 'Failed to fetch episodes',
@@ -154,13 +105,7 @@ class EpisodeController extends Controller
     public function show(Episode $episode): EpisodeResource
     {
         try {
-            $cacheKey = CacheService::getModelKey($episode);
-            
-            return CacheService::remember($cacheKey, function () use ($episode) {
-                return new EpisodeResource(
-                    $episode->load(['podcast'])
-                );
-            });
+            return new EpisodeResource($episode->load('podcast'));
         } catch (\Exception $e) {
             throw new ApiException(
                 'Failed to fetch episode details',
@@ -175,10 +120,9 @@ class EpisodeController extends Controller
      *     path="/api/episodes",
      *     summary="Create new episode",
      *     tags={"Episodes"},
-     *     security={{"sanctum":{}}},
      *     @OA\RequestBody(
      *         required=true,
-     *         @OA\JsonContent(ref="#/components/schemas/Episode")
+     *         @OA\JsonContent(ref="#/components/schemas/EpisodeRequest")
      *     ),
      *     @OA\Response(
      *         response=201,
@@ -195,12 +139,7 @@ class EpisodeController extends Controller
     {
         try {
             $episode = Episode::create($request->validated());
-            
-            // Clear related caches
-            CacheService::clearModelCache($episode);
-            CacheService::clearModelTypeCache(Episode::class);
-            
-            return new EpisodeResource($episode->load(['podcast']));
+            return new EpisodeResource($episode->load('podcast'));
         } catch (\Exception $e) {
             throw new ApiException(
                 'Failed to create episode',
@@ -215,7 +154,6 @@ class EpisodeController extends Controller
      *     path="/api/episodes/{episode}",
      *     summary="Update episode",
      *     tags={"Episodes"},
-     *     security={{"sanctum":{}}},
      *     @OA\Parameter(
      *         name="episode",
      *         in="path",
@@ -225,7 +163,7 @@ class EpisodeController extends Controller
      *     ),
      *     @OA\RequestBody(
      *         required=true,
-     *         @OA\JsonContent(ref="#/components/schemas/Episode")
+     *         @OA\JsonContent(ref="#/components/schemas/EpisodeRequest")
      *     ),
      *     @OA\Response(
      *         response=200,
@@ -242,12 +180,7 @@ class EpisodeController extends Controller
     {
         try {
             $episode->update($request->validated());
-            
-            // Clear related caches
-            CacheService::clearModelCache($episode);
-            CacheService::clearModelTypeCache(Episode::class);
-            
-            return new EpisodeResource($episode->load(['podcast']));
+            return new EpisodeResource($episode->load('podcast'));
         } catch (\Exception $e) {
             throw new ApiException(
                 'Failed to update episode',
@@ -262,7 +195,6 @@ class EpisodeController extends Controller
      *     path="/api/episodes/{episode}",
      *     summary="Delete episode",
      *     tags={"Episodes"},
-     *     security={{"sanctum":{}}},
      *     @OA\Parameter(
      *         name="episode",
      *         in="path",
@@ -271,7 +203,7 @@ class EpisodeController extends Controller
      *         @OA\Schema(type="integer")
      *     ),
      *     @OA\Response(
-     *         response=200,
+     *         response=204,
      *         description="Episode deleted successfully"
      *     ),
      *     @OA\Response(
@@ -280,19 +212,11 @@ class EpisodeController extends Controller
      *     )
      * )
      */
-    public function destroy(Episode $episode): \Illuminate\Http\JsonResponse
+    public function destroy(Episode $episode): \Illuminate\Http\Response
     {
         try {
-            $podcastId = $episode->podcast_id;
             $episode->delete();
-            
-            // Clear related caches
-            CacheService::clearModelCache($episode);
-            CacheService::clearModelTypeCache(Episode::class);
-            
-            return response()->json([
-                'message' => 'Episode deleted successfully'
-            ]);
+            return response()->noContent();
         } catch (\Exception $e) {
             throw new ApiException(
                 'Failed to delete episode',

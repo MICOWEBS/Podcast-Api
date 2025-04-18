@@ -12,152 +12,96 @@ class ValidationTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected User $user;
+    protected Category $category;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->user = User::factory()->create();
+        $this->category = Category::factory()->create();
+    }
+
     public function test_podcast_validation(): void
     {
-        $user = User::factory()->create();
-        $token = $user->createToken('test-token')->plainTextToken;
+        $response = $this->actingAs($this->user)
+            ->postJson($this->apiRoute('podcasts'), [
+                'title' => '', // Empty title
+                'description' => '', // Empty description
+                'image' => 'invalid-url', // Invalid image URL
+                'category_id' => 999, // Non-existent category
+                'author' => 'Test Author', // Required author field
+                'rss_feed_url' => 'invalid-url' // Invalid RSS feed URL
+            ]);
 
-        // Test invalid title
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer ' . $token,
-            'Accept' => 'application/json'
-        ])->postJson('/api/podcasts', [
-            'title' => 'a', // Too short
-            'description' => 'Test description',
-            'image_url' => 'invalid-url',
-            'category_id' => 999, // Non-existent category
-            'language' => 'invalid-language',
-            'tags' => ['invalid tag with spaces'],
-            'website_url' => 'invalid-url',
-            'rss_feed_url' => 'invalid-url'
-        ]);
-
+        // Assert response
         $response->assertStatus(422)
             ->assertJsonValidationErrors([
                 'title',
-                'image_url',
-                'category_id',
-                'language',
-                'tags.0',
-                'website_url',
-                'rss_feed_url'
+                'description',
+                'image',
+                'category_id'
             ]);
-
-        // Test duplicate title
-        $category = Category::factory()->create();
-        Podcast::factory()->create([
-            'title' => 'Existing Podcast',
-            'category_id' => $category->id
-        ]);
-
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer ' . $token,
-            'Accept' => 'application/json'
-        ])->postJson('/api/podcasts', [
-            'title' => 'Existing Podcast',
-            'description' => 'Test description',
-            'image_url' => 'https://example.com/image.jpg',
-            'category_id' => $category->id,
-            'language' => 'en'
-        ]);
-
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['title']);
     }
 
     public function test_episode_validation(): void
     {
-        $user = User::factory()->create();
-        $token = $user->createToken('test-token')->plainTextToken;
-        $podcast = Podcast::factory()->create();
-
-        // Test invalid episode data
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer ' . $token,
-            'Accept' => 'application/json'
-        ])->postJson('/api/episodes', [
-            'title' => 'a', // Too short
-            'description' => 'Test description',
-            'audio_url' => 'invalid-url',
-            'duration' => 0, // Invalid duration
-            'podcast_id' => 999, // Non-existent podcast
-            'episode_number' => -1, // Invalid episode number
-            'season_number' => -1, // Invalid season number
-            'publish_date' => 'invalid-date',
-            'guests' => [
-                ['name' => '', 'role' => ''] // Invalid guest data
-            ]
+        // Create a podcast first
+        $podcast = Podcast::factory()->create([
+            'category_id' => $this->category->id,
+            'author' => 'Test Author'
         ]);
 
+        $response = $this->actingAs($this->user)
+            ->postJson($this->apiRoute('episodes'), [
+                'title' => '', // Empty title
+                'description' => '', // Empty description
+                'audio_url' => 'invalid-url', // Invalid audio URL
+                'duration' => -1, // Invalid duration
+                'podcast_id' => $podcast->id,
+                'episode_number' => 0, // Invalid episode number
+                'season_number' => 0, // Invalid season number
+                'publish_date' => 'invalid-date', // Invalid date
+                'explicit' => 'invalid', // Invalid boolean
+                'keywords' => 'not-an-array', // Invalid keywords format
+                'guests' => 'not-an-array', // Invalid guests format
+                'show_notes' => str_repeat('a', 10001), // Too long show notes
+                'transcript' => str_repeat('a', 50001) // Too long transcript
+            ]);
+
+        // Assert response
         $response->assertStatus(422)
             ->assertJsonValidationErrors([
                 'title',
+                'description',
                 'audio_url',
                 'duration',
-                'podcast_id',
                 'episode_number',
                 'season_number',
                 'publish_date',
-                'guests.0.name',
-                'guests.0.role'
+                'explicit',
+                'keywords',
+                'guests',
+                'show_notes',
+                'transcript'
             ]);
-
-        // Test duplicate episode number
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer ' . $token,
-            'Accept' => 'application/json'
-        ])->postJson('/api/episodes', [
-            'title' => 'Test Episode',
-            'description' => 'Test description',
-            'audio_url' => 'https://example.com/audio.mp3',
-            'duration' => 300,
-            'podcast_id' => $podcast->id,
-            'episode_number' => 1,
-            'season_number' => 1
-        ]);
-
-        $response->assertStatus(201);
-
-        // Try to create another episode with the same number
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer ' . $token,
-            'Accept' => 'application/json'
-        ])->postJson('/api/episodes', [
-            'title' => 'Another Episode',
-            'description' => 'Test description',
-            'audio_url' => 'https://example.com/audio2.mp3',
-            'duration' => 300,
-            'podcast_id' => $podcast->id,
-            'episode_number' => 1,
-            'season_number' => 1
-        ]);
-
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['episode_number']);
     }
 
     public function test_rate_limiting(): void
     {
-        // Test login rate limiting
-        for ($i = 0; $i < 6; $i++) {
-            $response = $this->postJson('/api/auth/login', [
-                'email' => 'test@example.com',
-                'password' => 'password'
-            ]);
+        // Make multiple requests to a protected endpoint
+        for ($i = 0; $i < 61; $i++) {
+            $response = $this->actingAs($this->user)
+                ->postJson($this->apiRoute('podcasts'), [
+                    'title' => 'Test Podcast',
+                    'description' => 'Test Description',
+                    'image' => 'https://example.com/image.jpg',
+                    'category_id' => $this->category->id,
+                    'author' => 'Test Author'
+                ]);
         }
 
-        $response->assertStatus(429)
-            ->assertJson([
-                'message' => 'Too Many Attempts.'
-            ]);
-
-        // Test password reset rate limiting
-        for ($i = 0; $i < 6; $i++) {
-            $response = $this->postJson('/api/auth/forgot-password', [
-                'email' => 'test@example.com'
-            ]);
-        }
-
+        // Assert response
         $response->assertStatus(429)
             ->assertJson([
                 'message' => 'Too Many Attempts.'

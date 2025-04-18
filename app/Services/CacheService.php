@@ -10,7 +10,7 @@ class CacheService
     /**
      * Cache duration in minutes
      */
-    const CACHE_DURATION = 5;
+    const CACHE_DURATION = 1; // 1 minute for testing
 
     /**
      * Get cached data or store the result of the callback

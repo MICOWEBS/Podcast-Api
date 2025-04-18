@@ -12,13 +12,28 @@ class Episode extends Model
 
     protected $fillable = [
         'title',
+        'description',
         'audio_url',
         'duration',
+        'episode_number',
+        'season_number',
+        'publish_date',
+        'explicit',
+        'keywords',
+        'guests',
+        'show_notes',
+        'transcript',
         'podcast_id',
     ];
 
     protected $casts = [
         'duration' => 'integer',
+        'episode_number' => 'integer',
+        'season_number' => 'integer',
+        'publish_date' => 'datetime',
+        'explicit' => 'boolean',
+        'keywords' => 'array',
+        'guests' => 'array',
     ];
 
     public function podcast(): BelongsTo

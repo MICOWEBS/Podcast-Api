@@ -20,7 +20,7 @@ class AuthControllerTest extends TestCase
             'password_confirmation' => 'password123'
         ];
 
-        $response = $this->postJson('/api/auth/register', $userData);
+        $response = $this->postJson($this->apiRoute('register'), $userData);
 
         $response->assertStatus(201)
             ->assertJsonStructure([
@@ -46,7 +46,7 @@ class AuthControllerTest extends TestCase
             'password' => bcrypt('password123')
         ]);
 
-        $response = $this->postJson('/api/auth/login', [
+        $response = $this->postJson($this->apiRoute('login'), [
             'email' => $user->email,
             'password' => 'password123'
         ]);
@@ -71,7 +71,7 @@ class AuthControllerTest extends TestCase
 
         $response = $this->withHeaders([
             'Authorization' => 'Bearer ' . $token
-        ])->postJson('/api/auth/logout');
+        ])->postJson($this->apiRoute('logout'));
 
         $response->assertStatus(200)
             ->assertJson([
@@ -87,7 +87,7 @@ class AuthControllerTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $response = $this->postJson('/api/auth/forgot-password', [
+        $response = $this->postJson($this->apiRoute('forgot-password'), [
             'email' => $user->email
         ]);
 
@@ -102,7 +102,7 @@ class AuthControllerTest extends TestCase
         $user = User::factory()->create();
         $token = app('auth.password.broker')->createToken($user);
 
-        $response = $this->postJson('/api/auth/reset-password', [
+        $response = $this->postJson($this->apiRoute('reset-password'), [
             'token' => $token,
             'email' => $user->email,
             'password' => 'newpassword123',
@@ -122,7 +122,7 @@ class AuthControllerTest extends TestCase
 
     public function test_validates_registration_data()
     {
-        $response = $this->postJson('/api/auth/register', []);
+        $response = $this->postJson($this->apiRoute('register'), []);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['name', 'email', 'password']);
@@ -130,7 +130,7 @@ class AuthControllerTest extends TestCase
 
     public function test_validates_login_data()
     {
-        $response = $this->postJson('/api/auth/login', []);
+        $response = $this->postJson($this->apiRoute('login'), []);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['email', 'password']);
@@ -138,7 +138,7 @@ class AuthControllerTest extends TestCase
 
     public function test_validates_password_reset_data()
     {
-        $response = $this->postJson('/api/auth/reset-password', []);
+        $response = $this->postJson($this->apiRoute('reset-password'), []);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['token', 'email', 'password']);
@@ -146,7 +146,7 @@ class AuthControllerTest extends TestCase
 
     public function test_returns_error_for_invalid_credentials()
     {
-        $response = $this->postJson('/api/auth/login', [
+        $response = $this->postJson($this->apiRoute('login'), [
             'email' => 'nonexistent@example.com',
             'password' => 'wrongpassword'
         ]);
@@ -161,7 +161,7 @@ class AuthControllerTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $response = $this->postJson('/api/auth/reset-password', [
+        $response = $this->postJson($this->apiRoute('reset-password'), [
             'token' => 'invalid-token',
             'email' => $user->email,
             'password' => 'newpassword123',

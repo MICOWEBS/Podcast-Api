@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Requests\Api;
+namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -19,11 +19,19 @@ abstract class ApiRequest extends FormRequest
      */
     abstract public function rules(): array;
 
-    protected function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
+    /**
+     * Get custom messages for validator errors.
+     */
+    public function messages(): array
     {
-        throw new \Illuminate\Validation\ValidationException($validator, response()->json([
-            'message' => 'The given data was invalid.',
-            'errors' => $validator->errors(),
-        ], 422));
+        return [];
+    }
+
+    /**
+     * Get custom attributes for validator errors.
+     */
+    public function attributes(): array
+    {
+        return [];
     }
 } 
